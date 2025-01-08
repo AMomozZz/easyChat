@@ -6,6 +6,7 @@ import keyboard
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+from PyQt5.QtCore import QThread, QTimer
 from ui_auto_wechat import WeChat
 from functools import partial
 
@@ -25,33 +26,41 @@ class ClockThread(QThread):
         self.prevent_func = None
         # 每隔多少分钟进行一次防止自动下线操作
         self.prevent_count = 60
+        # 定时器
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_clocks)
 
     def __del__(self):
+        self.timer.stop()
+        self.quit()
         self.wait()
 
     def run(self):
-        cnt = 60
-        while self.time_counting:
-            localtime = time.localtime(time.time())
-            year = localtime.tm_year
-            month = localtime.tm_mon
-            day = localtime.tm_mday
-            hour = localtime.tm_hour % 24
-            min = localtime.tm_min % 60
+        if not self.time_counting:
+            return
+        self.timer.start(1000)  # 每秒检查一次
 
-            for i in range(self.clocks.count()):
-                clock_year, clock_month, clock_day, clock_hour, clock_min, st_ed = self.clocks.item(i).text().split(" ")
-                st, ed = st_ed.split('-')
-                if (int(clock_hour) == hour and int(clock_min) == min and int(clock_year) == year and
-                        int(clock_month) == month and int(clock_day) == day):
-                    self.send_func(st=int(st), ed=int(ed))
-                    # self.send_func()
-                    
-            if self.prevent_offline and cnt % self.prevent_count == 0:
+    def check_clocks(self):
+        localtime = time.localtime(time.time())
+        year = localtime.tm_year
+        month = localtime.tm_mon
+        day = localtime.tm_mday
+        hour = localtime.tm_hour % 24
+        min = localtime.tm_min % 60
+
+        # 检查定时任务
+        for i in range(self.clocks.count()):
+            clock_year, clock_month, clock_day, clock_hour, clock_min, st_ed = self.clocks.item(i).text().split(" ")
+            st, ed = st_ed.split('-')
+            if (int(clock_hour) == hour and int(clock_min) == min and int(clock_year) == year and
+                    int(clock_month) == month and int(clock_day) == day):
+                self.send_func(st=int(st), ed=int(ed))
+
+        # 检查防止自动下线操作
+        if self.prevent_offline:
+            current_second = int(time.time()) % (self.prevent_count * 60)
+            if current_second < 1:  # 每 prevent_count 分钟触发一次
                 self.prevent_func()
-
-            time.sleep(60)
-            cnt += 1
 
 
 class MyListWidget(QListWidget):
